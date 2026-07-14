@@ -18,9 +18,7 @@ public class DocumentController {
     @GetMapping("/health")
     public ResponseEntity<Map<String, String>> health() {
         return ResponseEntity.ok(Map.of(
-            "status", "UP",
-            "service", "etax-edms",
-            "version", "1.0.0"
+            "status", "UP", "service", "etax-edms", "version", "1.0.0"
         ));
     }
     @PostMapping("/upload")
@@ -40,10 +38,12 @@ public class DocumentController {
     }
     @GetMapping("/documents/{id}/download")
     public ResponseEntity<byte[]> download(@PathVariable Long id) throws Exception {
+        Document doc = documentService.getDocument(id);
         byte[] data = documentService.downloadDocument(id);
+        String filename = doc.getOriginalName() != null ? doc.getOriginalName() : "document-" + id;
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
-        headers.setContentDispositionFormData("attachment", "document-" + id);
+        headers.set("Content-Disposition", "attachment; filename=\"" + filename + "\"");
         return ResponseEntity.ok().headers(headers).body(data);
     }
     @PutMapping("/documents/{id}/verify")
