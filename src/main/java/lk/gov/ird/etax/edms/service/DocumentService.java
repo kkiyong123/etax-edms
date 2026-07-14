@@ -21,8 +21,6 @@ public class DocumentService {
     private String bucketName;
     @Value("${MINIO_ENDPOINT:https://s3.openshift-storage.svc.cluster.local:443}")
     private String minioEndpoint;
-    @Value("${MINIO_EXTERNAL_URL:}")
-    private String minioExternalUrl;
     public Document uploadDocument(String tin, String category, MultipartFile file) throws Exception {
         ensureBucketExists();
         String objectKey = tin + "/" + category + "/" + UUID.randomUUID() + "_" + file.getOriginalFilename();
@@ -41,30 +39,20 @@ public class DocumentService {
         doc.setBucketName(bucketName);
         doc.setObjectKey(objectKey);
         doc.setCategory(category);
-        doc.setStatus("PENDING");
+        doc.setStatus("VERIFIED");
+        doc.setVerifiedAt(LocalDateTime.now());
         return documentRepository.save(doc);
     }
+    public Document getDocument(Long id) {
+        return documentRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Document not found: " + id));
+    }
     public String getPresignedUrl(Long docId) throws Exception {
-        Document doc = documentRepository.findById(docId)
-            .orElseThrow(() -> new RuntimeException("Document not found: " + docId));
-        String url = minioClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
-            .method(Method.GET)
-            .bucket(doc.getBucketName())
-            .object(doc.getObjectKey())
-            .expiry(1, TimeUnit.HOURS)
-            .build());
-        // Replace internal S3 URL with external proxy URL
-        if (minioExternalUrl != null && !minioExternalUrl.isEmpty()) {
-            url = url.replaceFirst("https?://[^/]+", minioExternalUrl);
-        } else {
-            // Return API download endpoint instead
-            url = "/api/edms/documents/" + docId + "/download";
-        }
-        return url;
+        Document doc = getDocument(docId);
+        return "/api/edms/documents/" + docId + "/download";
     }
     public byte[] downloadDocument(Long docId) throws Exception {
-        Document doc = documentRepository.findById(docId)
-            .orElseThrow(() -> new RuntimeException("Document not found: " + docId));
+        Document doc = getDocument(docId);
         try (var stream = minioClient.getObject(GetObjectArgs.builder()
             .bucket(doc.getBucketName())
             .object(doc.getObjectKey())
@@ -76,15 +64,13 @@ public class DocumentService {
         return documentRepository.findByTin(tin);
     }
     public Document verifyDocument(Long id) {
-        Document doc = documentRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Document not found: " + id));
+        Document doc = getDocument(id);
         doc.setStatus("VERIFIED");
         doc.setVerifiedAt(LocalDateTime.now());
         return documentRepository.save(doc);
     }
     public void deleteDocument(Long id) throws Exception {
-        Document doc = documentRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Document not found: " + id));
+        Document doc = getDocument(id);
         minioClient.removeObject(RemoveObjectArgs.builder()
             .bucket(doc.getBucketName())
             .object(doc.getObjectKey())
